@@ -1,0 +1,8 @@
+# personal data — trips, daily backups and the server password never go to GitHub
+data/
+server_config.json
+# local leftovers
+index.old-*.html
+Если по сети.txt
+__pycache__/
+*.pyc
