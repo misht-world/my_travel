@@ -42,3 +42,7 @@
 ## Где хранятся данные
 Данные хранятся в браузере (localStorage), сохраняются автоматически. Периодически делайте **💾 Бэкап**: если очистить данные браузера, поездки пропадут.
 `lib/` — библиотеки ExcelJS (Excel) и Leaflet (карта). Если их нет, они загрузятся из интернета; без сети Excel сохранится как CSV.
+
+## Лицензия
+[MIT](LICENSE). Сторонние библиотеки в `lib/`: [Leaflet](https://leafletjs.com) — BSD-2-Clause, [ExcelJS](https://github.com/exceljs/exceljs) — MIT; иконки [Lucide](https://lucide.dev) — ISC.
+Данные карт и сервисы: © OpenStreetMap contributors, Esri, OSRM, Open-Meteo, Wikipedia/Wikidata.
