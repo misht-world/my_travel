@@ -283,6 +283,12 @@ button.sm .i{width:15px;height:15px}
 .fact.pay-paid{background:var(--ok-soft);border-color:transparent} .fact.pay-paid b{color:var(--ok)}
 .fact.pay-onsite{background:var(--warn-soft);border-color:transparent} .fact.pay-onsite b{color:var(--warn)}
 .fact.pay-deposit{background:var(--accent-soft);border-color:transparent} .fact.pay-deposit b{color:var(--accent)}
+.pill.opt{border-style:dashed;background:transparent}
+.row.optional{opacity:.72}
+.fwrap{display:flex;gap:4px;align-items:center}
+.fclear{padding:4px 8px;color:var(--muted)} .fclear:hover{color:var(--bad)}
+details.park summary{cursor:pointer;list-style:none} details.park summary::-webkit-details-marker{display:none}
+details.park[open] summary{margin-bottom:8px}
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:10}
 .modal.hidden{display:none}
@@ -850,7 +856,7 @@ function renderMain() {
 
 function placeRow(p, showDate) {
   const drag = !showDate; // drag & drop / selection only in the «По дням» view
-  return `<div class="row ${drag ? 'prow' : ''}" ${drag ? `draggable="true" data-pid="${p.id}"` : `id="item-${p.id}"`}>
+  return `<div class="row ${drag ? 'prow' : ''} ${isOptional(p) ? 'optional' : ''}" ${drag ? `draggable="true" data-pid="${p.id}"` : `id="item-${p.id}"`}>
     ${drag ? `<span class="grip noprint" title="Перетащите на другой день">${I('grip')}</span>` : ''}
     ${drag && ui.selMode ? `<input type="checkbox" data-sel="${p.id}" ${ui.sel.has(p.id) ? 'checked' : ''} title="Выбрать для переноса" style="width:auto;accent-color:var(--warn)">` : ''}
     ${drag && ui.selMode ? '' : `<input type="checkbox" data-toggle="places:${p.id}" ${p.done ? 'checked' : ''} title="Посещено" style="width:auto">`}
@@ -858,7 +864,7 @@ function placeRow(p, showDate) {
     ${showDate && p.date ? `<span class="pill">${fmt(p.date)}</span>` : ''}
     ${p.time ? `<b>${esc(p.time)}</b>` : ''}
     <span class="${p.done ? 'done' : ''}"><a href="#" data-edit="places:${p.id}" title="Открыть карточку места">${esc(p.title || 'Место')}</a></span>
-    ${p.priority === 'must' ? `<span class="pill warn" title="Обязательно">${I('star')}</span>` : ''}
+    ${p.priority === 'must' ? `<span class="pill warn" title="Обязательно">${I('star')}</span>` : p.priority === 'maybe' ? `<span class="pill opt" title="${p.time ? 'Если будет время — время задано, место в основном маршруте' : 'Если будет время — не входит в основной «Маршрут дня»'}">если будет время</span>` : ''}
     ${p.city ? `<span class="muted small">${esc(p.city)}</span>` : ''}
     ${placeHours(p) ? `<span class="pill" title="Часы работы: ${esc(placeHours(p))}">${I('clock')} ${esc(placeHours(p).length > 22 ? placeHours(p).slice(0, 22) + '…' : placeHours(p))}</span>` : ''}
     ${placePhoto(p) ? `<span class="muted small" title="Есть фото">${I('image')}</span>` : ''}
@@ -915,6 +921,10 @@ function transportRow(x, bad) {
     ${legPoints(x).length > 1 ? `<a class="pill" href="${esc(routeUrl(legPoints(x)))}" target="_blank" rel="noopener">${I('route')} Маршрут</a>` : ''}
   </div>`;
 }
+// Places of a day that make the main route: all except «если будет время» without a set time
+// (if the day has only such places, all of them)
+const isOptional = p => p.priority === 'maybe' && !p.time;
+const corePlaces = pls => pls.some(p => !isOptional(p)) ? pls.filter(p => !isOptional(p)) : pls;
 // A titled block inside a day card: transfers / stay / places — each with its own accent
 const GROUP_ICON = {move: 'car', stay: 'bed', places: 'pin'};
 const group = (kind, title, body) => body ? `<div class="dgroup dg-${kind}"><div class="dgroup-h">${I(GROUP_ICON[kind])}${title}</div>${body}</div>` : '';
@@ -935,8 +945,10 @@ function renderDays(t, el) {
     const pls = t.places.filter(x => x.date === d).sort(byDateTime);
     // route: where we woke up → places → where we sleep
     const morning = stayForNight(t, addDays(d, -1))[0] || checkOuts[0];
-    const pts = [morning && mapTarget(morning), ...pls.map(mapTarget), sleep[0] && mapTarget(sleep[0])].filter(Boolean)
-      .filter((p, k, a) => p !== a[k - 1]);
+    // «если будет время» without a set time does not go into the main route; there is a second link with everything
+    const core = corePlaces(pls), extra = pls.length - core.length;
+    const routeOf = list => [morning && mapTarget(morning), ...list.map(mapTarget), sleep[0] && mapTarget(sleep[0])].filter(Boolean).filter((p, k, a) => p !== a[k - 1]);
+    const pts = routeOf(core), ptsAll = extra ? routeOf(pls) : [];
     const route = dayRoute(t, d);
     const city = route.map(esc).join(' <span class="muted">→</span> ');
     h +=`<div class="card day ${d === td ? 'today' : ''} ${isWeekend(d) ? 'weekend' : ''}" id="day-${d}" data-dropday="${d}">
@@ -944,7 +956,8 @@ function renderDays(t, el) {
       <div>
         <div class="row" style="padding-top:0"><b style="font-size:15px;cursor:pointer" data-act="dayNote" data-date="${d}" title="Задать название дня / заметку">${t.dayTitles?.[d] ? esc(t.dayTitles[d]) : (route.length > 1 ? I('route') + ' ' : '') + (city || '<span class="muted">—</span>')}</b>${t.dayTitles?.[d] && route.length > 1 ? `<span class="muted small">${I('route')} ${city}</span>` : ''}${trs.length > 1 ? (() => { const km = trs.reduce((a, x) => a + num(x.distanceKm), 0), m = trs.reduce((a, x) => a + legDuration(x), 0);
             return (km ? `<span class="pill">${I('ruler')} ${km.toLocaleString('ru-RU')} км</span>` : '') + (m ? `<span class="pill">${I('timer')} ${fmtDur(m)} в пути</span>` : ''); })() : ''}${d === td ? '<span class="pill acc">сегодня</span>' : ''}${(w => w ? `<span class="pill" title="${esc(wxLong(w) + ' (' + wxSrc(w) + ')\nЧто надеть: ' + wearHint(w))}">${wxShort(w)}${w.src === 'c' ? '<small> норма</small>' : ''}</span>` : '')(t.weather?.days?.[d])}<span class="grow"></span>
-          ${pts.length >= 2 ? `<a class="pill acc noprint" href="${esc(routeUrl(pts))}" target="_blank" rel="noopener" title="Маршрут: жильё → места → жильё">${I('route')} Маршрут дня</a>` : ''}
+          ${pts.length >= 2 ? `<a class="pill acc noprint" href="${esc(routeUrl(pts))}" target="_blank" rel="noopener" title="Маршрут: жильё → места → жильё${extra ? ' (без мест «если будет время»)' : ''}">${I('route')} Маршрут дня</a>` : ''}
+          ${ptsAll.length >= 2 ? `<a class="pill opt noprint" href="${esc(routeUrl(ptsAll))}" target="_blank" rel="noopener" title="Маршрут со всеми местами дня, включая «если будет время»">+ если будет время (${extra})</a>` : ''}
           <button class="sm ghost noprint" data-act="addPlace" data-date="${d}" title="Добавить место на этот день">${I('plus')}${I('pin')}</button>
           <button class="sm ghost noprint" data-act="addTransport" data-date="${d}" title="Добавить переезд">${I('plus')}${I('car')}</button>
           <button class="sm ghost noprint" data-act="dayNote" data-date="${d}" title="Название дня и заметка">${I('pencil')}</button>
@@ -1062,6 +1075,17 @@ function transportCard(t, x, bad) {
     ${map ? `<div class="rmap">${map}</div>` : ''}
   </div>`;
 }
+// parking rules of the route's countries — only if the trip goes by car
+function parkingCard(t) {
+  if (!t.transport.some(x => ['car', 'taxi'].includes(x.type))) return '';
+  const cities = tripStops(t).map(s => s.name);
+  const ccs = tripCountries(t, cities).filter(([cc]) => PARKING[cc]);
+  if (!ccs.length) return '';
+  return `<details class="card park" ${state.parkOpen ? 'open' : ''} ontoggle="state.parkOpen = this.open; save()">
+    <summary><b>🅿 Парковка в странах маршрута</b> <span class="muted small">— общие правила, ${ccs.length} ${plural(ccs.length, 'страна', 'страны', 'стран')}</span></summary>
+    ${ccs.map(([cc, n]) => `<div class="dline">${ccBadge(cc, n)}<div><b>${esc(n || cc.toUpperCase())}.</b> ${esc(PARKING[cc])}</div></div>`).join('')}
+    <div class="small muted" style="margin-top:6px">Ориентир: часы оплаты и тарифы зависят от города — главное знаки на месте.</div></details>`;
+}
 function renderTransport(t, el) {
   const xs = [...t.transport].sort(byDateTime), rp = routeProblems(t);
   const km = xs.reduce((a, x) => a + num(x.distanceKm), 0), min = xs.reduce((a, x) => a + legDuration(x), 0);
@@ -1070,6 +1094,7 @@ function renderTransport(t, el) {
   el.innerHTML = (rp.length ? `<div class="alert bad"><b>${I('warn')} Маршрут не стыкуется:</b>${rp.map(p => `<div>• ${esc(p.msg)}</div>`).join('')}</div>` : '')
     + `<div class="addbar"><button class="primary" data-act="addTransport">${I('plus')} Добавить переезд</button>
       ${noCalc ? `<button data-act="calcAll" title="Рассчитать км и время для переездов, где они не указаны">${I('ruler')} Рассчитать км и время (${noCalc})</button>` : ''}</div>`
+    + parkingCard(t)
     + (km || min ? `<div class="stats" style="margin-top:0">
       <div class="stat"><b>${km.toLocaleString('ru-RU')} км</b><span>всего в пути</span></div>
       <div class="stat"><b>${fmtDur(min) || '—'}</b><span>время в дороге</span></div>
@@ -1396,6 +1421,7 @@ function fieldHtml(f, v) {
   else inp = `<input name="${f.k}" id="${id}" type="${f.type === 'map' ? 'url' : f.type === 'url' ? 'text' : f.type || 'text'}" ${f.type === 'url' ? 'inputmode="url" placeholder="https://…"' : ''} value="${esc(val)}" ${f.ph ? `placeholder="${esc(f.ph)}"` : f.type === 'map' ? 'placeholder="https://maps.app.goo.gl/… или https://www.google.com/maps/place/…"' : ''} ${f.list ? `list="dl_${f.list}"` : ''} ${f.type === 'number' ? 'step="any" min="0"' : ''}>`;
   if (f.type === 'map') inp = `<div style="display:flex;gap:6px;flex-wrap:wrap">${inp.replace('type="url"', 'type="text"').replace(/placeholder="[^"]*"/, 'placeholder="https://maps.app.goo.gl/…  или  45.45579, 15.57353"')}
     <button type="button" id="mapPick" class="primary" title="Показать точку на карте, поправить кликом или перетаскиванием" style="white-space:nowrap">🗺 На карте</button></div>`;
+  if ((f.type === 'time' || f.type === 'date') && !f.req) inp = `<div class="fwrap">${inp}<button type="button" class="ghost fclear" data-clear="${id}" title="Очистить">✕</button></div>`;
   return `<div class="${f.full ? 'full' : ''}"><label for="${id}">${f.label}${f.req ? ' *' : ''}</label>${inp}${f.type === 'map' ? '<div class="hint" id="mapHint"></div><div id="mapPrev"></div>' : ''}</div>`;
 }
 function openForm(kind, data, onSave, onDelete) {
@@ -1545,6 +1571,10 @@ function openForm(kind, data, onSave, onDelete) {
   }
   form.querySelector('input:not([type=hidden]),select,textarea')?.focus();
   form.addEventListener('input', () => form._dirty = true);
+  form.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => {
+    const el = form.querySelector('#' + b.dataset.clear); el.value = '';
+    el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true}));
+  });
   $('#fCancel').onclick = tryCloseModal;
   if (onDelete) $('#fDel').onclick = () => { if (confirm('Удалить?')) { closeModal(); onDelete(); } };
   form.onsubmit = async e => {
@@ -1939,6 +1969,27 @@ function clockChange(d) {
 }
 // Short country notes (check before the trip — rules change)
 const EU_ROAM = new Set('at be bg hr cy cz dk ee fi fr de gr hu ie it lv lt lu mt nl pl pt ro sk si es se is li no'.split(' '));
+// Street parking: general rules by country — a guide, the signs on the spot always win
+const PARKING = {
+  it: 'Синяя разметка — платно (паркомат, приложение), белая — бесплатно, жёлтая — только для жителей / инвалидов. В исторических центрах зоны ZTL: въезд без разрешения — штраф по камере.',
+  es: '«Zona azul» (синяя) — платно и на ограниченное время, зелёная — приоритет жителям (для гостей короче и дороже), белая — бесплатно, жёлтая — стоять нельзя.',
+  fr: '«Zone bleue» — бесплатно с парковочным диском на ограниченное время; «payant» — паркомат или приложение. В Париже почти везде платно.',
+  pt: 'В центрах городов платные зоны с паркоматами и приложениями; за пределами центра часто бесплатно.',
+  de: 'Где на знаке нарисован диск — нужен парковочный диск (Parkscheibe) с временем прибытия; платные места — паркомат или приложение; «Anwohner» — только для жителей.',
+  at: '«Kurzparkzone» (синяя разметка) — ограничение по времени, нужен парковочный талон (Parkschein, продаётся в табачных киосках «Trafik») или приложение. В Вене платно почти по всему городу в будни.',
+  si: '«Modra cona» (синяя зона) — бесплатно с парковочным диском на указанное время; центры крупных городов платные (паркомат, приложение).',
+  hr: 'Городские зоны I–III обозначены знаками: ближе к центру дороже и короче. Оплата в паркомате или по SMS на номер со знака — с иностранной SIM SMS может не пройти, держите монеты или карту. Летом на побережье дороже.',
+  ba: 'Платные зоны в городах обозначены знаками; оплата в паркомате, контролёру или по SMS (обычно только с местной SIM). Много платных охраняемых стоянок.',
+  rs: 'Цветные зоны (красная / жёлтая / зелёная — чем «теплее», тем короче можно стоять). Оплата по SMS или билетом из киоска.',
+  me: 'Летом в курортных городах платно почти везде: паркоматы, SMS, частные стоянки. Эвакуация неправильно припаркованных машин — обычное дело.',
+  hu: 'Платные зоны обозначены знаками; оплата в паркомате, по SMS или через приложение мобильной парковки.',
+  sk: 'Платные зоны в городах; оплата в паркомате, по SMS или в приложении.',
+  cz: 'В Праге цветные зоны: синяя — только для жителей (штраф, эвакуация), фиолетовая — смешанная, оранжевая — краткосрочная платная. Удобно оставить машину на перехватывающей стоянке P+R.',
+  pl: '«Strefa płatnego parkowania» — платная зона в будни в рабочие часы; паркомат или приложение.',
+  ro: 'Платные зоны в городах; оплата в паркомате, по SMS или в приложении.',
+  bg: 'В Софии и крупных городах «синяя» и «зелёная» зоны — платно, оплата обычно по SMS; в синей стоять можно меньше.',
+  gr: 'В городах контролируемые зоны (часть мест только для жителей); оплата в паркомате или приложении. Много частных платных стоянок.',
+};
 const COUNTRY_INFO = {
   hu: {cur: 'форинт (HUF)', road: 'автомагистрали — e-виньетка (e-matrica), покупается онлайн заранее'},
   hr: {cur: 'евро (EUR)', road: 'платные автомагистрали (оплата за участок)'},
@@ -2219,6 +2270,9 @@ async function buildGuide(t, opt, status) {
         ${ccs.map(([cc, n]) => { const ci = COUNTRY_INFO[cc] || {}; return `<tr><td>${ccBadge(cc, n)} ${esc(n || '')}</td><td>${esc(ci.cur || '')}</td><td>${esc(ci.road || '')}</td>
           <td>${EU_ROAM.has(cc) ? 'роуминг ЕС — как дома' : '<b style="color:#b91c1c">не ЕС — роуминг может быть дорогим</b>, проверьте тариф или купите eSIM'}</td></tr>`; }).join('')}</table>
         <div class="g-sm" style="margin-top:4px">Правила меняются — проверьте перед поездкой.</div>` : ''}
+      ${ccs.length && t.transport.some(x => ['car', 'taxi'].includes(x.type)) && ccs.some(([cc]) => PARKING[cc]) ? `<h3>Парковка в городах</h3>
+        ${ccs.filter(([cc]) => PARKING[cc]).map(([cc, n]) => `<div class="g-line">${ccBadge(cc, n)} <b>${esc(n || '')}:</b> ${esc(PARKING[cc])}</div>`).join('')}
+        <div class="g-sm">Общие правила — ориентир; часы оплаты и тарифы зависят от города. Главное — знаки на месте.</div>` : ''}
     </section>`;
   }
   // stays
@@ -2732,7 +2786,7 @@ async function exportExcel(t) {
     const s = stayForNight(t, d)[0], last = i === dl.length - 1;
     const pls = t.places.filter(p => p.date === d).sort(byDateTime);
     const morning = stayForNight(t, addDays(d, -1))[0];
-    const pts = [morning && mapTarget(morning), ...pls.map(mapTarget), s && mapTarget(s)].filter(Boolean).filter((p, k, a) => p !== a[k - 1]);
+    const pts = [morning && mapTarget(morning), ...corePlaces(pls).map(mapTarget), s && mapTarget(s)].filter(Boolean).filter((p, k, a) => p !== a[k - 1]);
     const ins = t.stays.filter(x => x.checkIn === d), outs = t.stays.filter(x => x.checkOut === d);
     const move = [...outs.map(x => `🧳 Выезд: ${x.name}${outTime(x) ? ' ' + outTime(x) : ''}`),
       ...t.transport.filter(x => x.date === d).sort(byDateTime).map(x => `${icoTxt(TRANSPORT, x.type)} ${x.time ? x.time + ' ' : ''}${legText(x)}${x.number ? ' (' + x.number + ')' : ''}${num(x.distanceKm) || legDuration(x) ? ' — ' + [num(x.distanceKm) && x.distanceKm + ' км', fmtDur(legDuration(x))].filter(Boolean).join(', ') : ''}`),
