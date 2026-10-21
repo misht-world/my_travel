@@ -289,6 +289,21 @@ button.sm .i{width:15px;height:15px}
 .fclear{padding:4px 8px;color:var(--muted)} .fclear:hover{color:var(--bad)}
 details.park summary{cursor:pointer;list-style:none} details.park summary::-webkit-details-marker{display:none}
 details.park[open] summary{margin-bottom:8px}
+/* overview */
+.dash{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,42%);gap:16px;align-items:start}
+.dash-left{min-width:0}
+.dash-right{position:sticky;top:0}
+.dash-right .maprow{grid-template-columns:1fr}
+.dash-right .stoplist{display:none}
+.dash-right #routeMap{height:calc(100vh - 150px);min-height:420px}
+.dash-h{display:flex;align-items:center;gap:8px;margin:18px 0 8px}
+.dash .week{min-height:66px}
+.dash #dashCal>.stats{display:none}
+.dash .dcol{cursor:pointer}
+.dash .dcol:hover .dnum{color:var(--accent)}
+.day.focus{outline:2px solid #16a34a;outline-offset:1px}
+.cell.focus{box-shadow:inset 0 0 0 2px #16a34a}
+@media (max-width:1100px){ .dash{grid-template-columns:1fr} .dash-right{position:static;order:-1} .dash-right #routeMap{height:380px;min-height:0} .dash-left{order:0} }
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:10}
 .modal.hidden{display:none}
@@ -553,7 +568,7 @@ if (!state || !Array.isArray(state.trips)) state = {trips: [demoTrip()], current
 // light theme unless dark was chosen explicitly (🌓 button)
 if (!state.theme) state.theme = 'light';
 if (!state.currentId && state.trips[0]) state.currentId = state.trips[0].id;
-state.tab = 'days'; // always open on «По дням»
+state.tab = 'dash'; // always open on the overview
 const ui = {placeFilter: '', placeCity: '', placeSearch: '', selMode: false, sel: new Set()};
 function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { toast('⚠ Не удалось сохранить: ' + e.message); } scheduleSync(); }
 function commit() { save(); render(); }
@@ -816,7 +831,7 @@ function renderMain() {
   // all cities of the route (not only those with a booked stay), in travel order
   const cities = tripStops(t).map(s => s.name).filter((c, i, a) => a.findIndex(x => sameCity(x, c)) === i);
   const countries = tripCountries(t, cities);
-  const tabs = {days: I('list') + 'По дням', calendar: I('calendar') + 'Календарь', map: I('map') + 'Карта маршрута', stays: I('bed') + `Жильё (${t.stays.length})`, places: I('pin') + `Места (${t.places.length})`, transport: I('car') + `Транспорт (${t.transport.length})`, checklist: I('check') + `Чек-лист (${t.checklist.filter(c => c.done).length}/${t.checklist.length})`, notes: I('note') + 'Заметки'};
+  const tabs = {dash: I('compass') + 'Обзор', days: I('list') + 'По дням', calendar: I('calendar') + 'Календарь', map: I('map') + 'Карта маршрута', stays: I('bed') + `Жильё (${t.stays.length})`, places: I('pin') + `Места (${t.places.length})`, transport: I('car') + `Транспорт (${t.transport.length})`, checklist: I('check') + `Чек-лист (${t.checklist.filter(c => c.done).length}/${t.checklist.length})`, notes: I('note') + 'Заметки'};
   m.innerHTML = `
   <div class="head">
     <div>
@@ -851,7 +866,7 @@ function renderMain() {
   const body = $('#tabBody');
   ensureGeo(t).then(ch => { if (ch && cur() === t && !userIsEditing()) render(); }).catch(() => {});
   ensureWeather(t).then(ch => { if (ch && cur() === t) { save(); if (!userIsEditing()) render(); } }).catch(() => {});
-  ({days: renderDays, stays: renderStays, places: renderPlaces, transport: renderTransport, calendar: renderCalendar, map: renderRouteMap, checklist: renderChecklist, notes: renderNotes}[state.tab] || renderDays)(t, body);
+  ({dash: renderDash, days: renderDays, stays: renderStays, places: renderPlaces, transport: renderTransport, calendar: renderCalendar, map: renderRouteMap, checklist: renderChecklist, notes: renderNotes}[state.tab] || renderDash)(t, body);
 }
 
 function placeRow(p, showDate) {
@@ -952,7 +967,7 @@ function renderDays(t, el) {
     const route = dayRoute(t, d);
     const city = route.map(esc).join(' <span class="muted">→</span> ');
     h +=`<div class="card day ${d === td ? 'today' : ''} ${isWeekend(d) ? 'weekend' : ''}" id="day-${d}" data-dropday="${d}">
-      <div class="dcol"><div class="dnum">${D(d).getUTCDate()}</div><div class="dmeta">${MON[D(d).getUTCMonth()]}, ${wd(d)}</div><div class="dmeta" style="margin-top:6px">день ${i + 1}</div></div>
+      <div class="dcol" data-focus="${d}" title="Показать день на карте"><div class="dnum">${D(d).getUTCDate()}</div><div class="dmeta">${MON[D(d).getUTCMonth()]}, ${wd(d)}</div><div class="dmeta" style="margin-top:6px">день ${i + 1}</div></div>
       <div>
         <div class="row" style="padding-top:0"><b style="font-size:15px;cursor:pointer" data-act="dayNote" data-date="${d}" title="Задать название дня / заметку">${t.dayTitles?.[d] ? esc(t.dayTitles[d]) : (route.length > 1 ? I('route') + ' ' : '') + (city || '<span class="muted">—</span>')}</b>${t.dayTitles?.[d] && route.length > 1 ? `<span class="muted small">${I('route')} ${city}</span>` : ''}${trs.length > 1 ? (() => { const km = trs.reduce((a, x) => a + num(x.distanceKm), 0), m = trs.reduce((a, x) => a + legDuration(x), 0);
             return (km ? `<span class="pill">${I('ruler')} ${km.toLocaleString('ru-RU')} км</span>` : '') + (m ? `<span class="pill">${I('timer')} ${fmtDur(m)} в пути</span>` : ''); })() : ''}${d === td ? '<span class="pill acc">сегодня</span>' : ''}${(w => w ? `<span class="pill" title="${esc(wxLong(w) + ' (' + wxSrc(w) + ')\nЧто надеть: ' + wearHint(w))}">${wxShort(w)}${w.src === 'c' ? '<small> норма</small>' : ''}</span>` : '')(t.weather?.days?.[d])}<span class="grow"></span>
@@ -1155,6 +1170,39 @@ function renderPlaces(t, el) {
   $('#fPlace').onchange = e => { ui.placeFilter = e.target.value; render(); };
   $('#fCity').onchange = e => { ui.placeCity = e.target.value; render(); };
   $('#fSearch').oninput = e => { ui.placeSearch = e.target.value; const pos = e.target.selectionStart; render(); const s = $('#fSearch'); s.focus(); s.setSelectionRange(pos, pos); };
+}
+/* ---- overview: calendar on top, days below, the route map on the right ---- */
+// what the map depends on: if this did not change, the map (and the user's zoom) is kept between re-renders
+const mapSig = t => JSON.stringify([t.id, tripStops(t).map(s => [s.name, s.nights]), t.transport.map(x => [x.type, legText(x), x.geomK || '']),
+  t.stays.map(s => [s.city, s.lat, s.lng, s.checkIn, s.checkOut]), t.places.map(p => [p.date, p.lat, p.lng, p.mapUrl])]);
+function renderDash(t, el) {
+  el.innerHTML = `<div class="dash"><div class="dash-left"><div id="dashCal"></div><h3 class="dash-h">${I('list')} По дням <span class="small muted">· клик по дате — день на карте</span></h3><div id="dashDays"></div></div>
+    <div class="dash-right"><div id="dashMap"></div></div></div>`;
+  renderCalendar(t, $('#dashCal'));
+  renderDays(t, $('#dashDays'));
+  const sig = mapSig(t);
+  if (renderDash.mapEl && renderDash.sig === sig) {
+    $('#dashMap').replaceWith(renderDash.mapEl);            // keep the live map (and the user's zoom) as it is
+    renderRouteMap.map?.invalidateSize();
+  } else {
+    renderDash.mapEl = $('#dashMap'); renderDash.sig = sig;
+    renderRouteMap(t, renderDash.mapEl);
+  }
+}
+// zoom the map to one day: its cities, places, stay and road; the day's places are shown as green dots
+function focusDay(d) {
+  document.querySelectorAll('.day.focus,.cell.focus').forEach(x => x.classList.remove('focus'));
+  document.getElementById('day-' + d)?.classList.add('focus');
+  document.querySelector(`.cell[data-goday="${d}"]`)?.classList.add('focus');
+  const t = cur(), map = renderRouteMap.map;
+  if (!map || !document.getElementById('routeMap')?.isConnected) return;
+  const pls = t.places.filter(p => p.date === d);
+  const pts = [...dayRoute(t, d).map(placeGeo), ...pls.map(p => itemCoords(p)), ...stayForNight(t, d).map(s => itemCoords(s, false)),
+    ...t.transport.filter(x => x.date === d).flatMap(x => legGeom(x) || []).map(([lat, lng]) => ({lat, lng}))].filter(Boolean);
+  focusDay.layer?.remove();
+  focusDay.layer = L.layerGroup(pls.map((p, i) => { const c = itemCoords(p); return c && L.circleMarker([c.lat, c.lng], {radius: 7, color: '#fff', weight: 2, fillColor: '#16a34a', fillOpacity: 1})
+    .bindTooltip(`${p.time ? esc(p.time) + ' ' : ''}${esc(p.title)}`); }).filter(Boolean)).addTo(map);
+  if (pts.length) map.flyToBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), {padding: [40, 40], maxZoom: 13, duration: .6});
 }
 /* ---- calendar: stays as bars across nights, transport as chips, gaps highlighted ---- */
 const STAY_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#ef4444', '#6366f1', '#84cc16', '#0ea5e9'];
@@ -2528,10 +2576,17 @@ const actions = {
   },
 };
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-act],[data-trip],[data-tab],[data-edit],[data-dup],[data-del],[data-preview],[data-goday]');
+  const el = e.target.closest('[data-act],[data-trip],[data-tab],[data-edit],[data-dup],[data-del],[data-preview],[data-goday],[data-focus]');
   if (!el) return;
   const d = el.dataset;
-  if (d.goday) { e.preventDefault(); if (el.closest('#modalBox')) closeModal(); state.tab = 'days'; commit(); document.getElementById('day-' + d.goday)?.scrollIntoView({behavior: 'smooth', block: 'center'}); return; }
+  if (d.goday) {
+    e.preventDefault(); if (el.closest('#modalBox')) closeModal();
+    if (state.tab !== 'dash') { state.tab = 'days'; commit(); }
+    document.getElementById('day-' + d.goday)?.scrollIntoView({behavior: 'smooth', block: 'center'});
+    if (state.tab === 'dash') focusDay(d.goday);
+    return;
+  }
+  if (d.focus) { if (state.tab === 'dash') focusDay(d.focus); return; }
   if (d.preview) { e.preventDefault(); showMapPreview(d.preview); return; }
   if (d.act) { e.preventDefault(); actions[d.act]?.(el); return; }
   if (d.trip) { state.currentId = d.trip; commit(); return; }
